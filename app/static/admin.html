@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Painel Admin</title>
+  <style>
+    :root{--bg:#0f172a;--card:#111827;--line:#1f2937;--text:#e5e7eb;--muted:#94a3b8;--accent:#38bdf8;--danger:#fb7185;}
+    body{margin:0;font-family:Arial,sans-serif;background:var(--bg);color:var(--text)}
+    .container{max-width:1200px;margin:24px auto;padding:0 16px}
+    .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px}
+    .hidden{display:none}
+    input,button{border-radius:12px;border:1px solid var(--line);background:#020617;color:var(--text);padding:10px 12px}
+    button{background:var(--accent);color:#00111a;border:none;cursor:pointer;font-weight:700}
+    button.danger{background:var(--danger);color:white}
+    table{width:100%;border-collapse:collapse;font-size:14px}
+    th,td{padding:10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+    .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+    .muted{color:var(--muted)}
+    .log-box{max-height:420px;overflow:auto}
+    @media (max-width:900px){.grid{grid-template-columns:1fr 1fr}}
+    @media (max-width:600px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div id="loginCard" class="card">
+      <h1>Painel Admin</h1>
+      <p class="muted">Acesso privado do administrador.</p>
+      <div class="row">
+        <input id="username" placeholder="Usuário" value="admin" />
+        <input id="password" placeholder="Senha" type="password" />
+        <button onclick="login()">Entrar</button>
+      </div>
+      <p id="loginMsg" class="muted"></p>
+    </div>
+
+    <div id="app" class="hidden">
+      <div class="row" style="justify-content:space-between;margin-bottom:16px">
+        <div>
+          <h1 style="margin:0">Dashboard da API</h1>
+          <div class="muted">Tempo real, gerenciamento de keys e logs</div>
+        </div>
+        <div class="row">
+          <button onclick="refreshAll()">Atualizar</button>
+          <button class="danger" onclick="logout()">Sair</button>
+        </div>
+      </div>
+
+      <div class="grid" id="stats"></div>
+
+      <div class="card" style="margin-top:16px">
+        <h2>Gerar API Key</h2>
+        <div class="row">
+          <input id="adminSecret" placeholder="x-admin-secret" />
+          <input id="keyLabel" placeholder="Label opcional da key" />
+          <button onclick="generateKey()">Gerar Key</button>
+        </div>
+        <p id="genMsg" class="muted"></p>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <h2>API Keys</h2>
+        <div class="log-box">
+          <table>
+            <thead><tr><th>Key</th><th>Label</th><th>Status</th><th>Criada em</th><th>Último uso</th><th>Ação</th></tr></thead>
+            <tbody id="keysTable"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <h2>Logs em tempo real</h2>
+        <div class="log-box">
+          <table>
+            <thead><tr><th>ID</th><th>Tipo</th><th>Valor</th><th>Status</th><th>Key</th><th>IP</th><th>Data</th></tr></thead>
+            <tbody id="logsTable"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+<script>
+async function api(url, options={}) {
+  const response = await fetch(url, { credentials: 'include', headers: { 'Content-Type': 'application/json', ...(options.headers||{}) }, ...options });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.detail || 'Erro na requisição');
+  return data;
+}
+
+async function checkAuth() {
+  try {
+    await api('/admin/me');
+    document.getElementById('loginCard').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+    refreshAll();
+    openStream();
+  } catch (_) {}
+}
+
+async function login() {
+  const username = document.getElementById('username').value;
+  const password = document.getElementById('password').value;
+  try {
+    const data = await api('/admin/login', { method:'POST', body: JSON.stringify({ username, password }) });
+    document.getElementById('loginMsg').innerText = data.message;
+    checkAuth();
+  } catch (err) {
+    document.getElementById('loginMsg').innerText = err.message;
+  }
+}
+
+async function logout() {
+  await api('/admin/logout', { method:'POST' });
+  location.reload();
+}
+
+async function refreshAll() {
+  loadStats();
+  loadKeys();
+  loadLogs();
+}
+
+async function loadStats() {
+  const data = await api('/admin/stats');
+  const s = data.stats;
+  document.getElementById('stats').innerHTML = `
+    <div class="card"><h3>Total de consultas</h3><div>${s.total_queries}</div></div>
+    <div class="card"><h3>Total de keys</h3><div>${s.total_keys}</div></div>
+    <div class="card"><h3>Keys ativas</h3><div>${s.active_keys}</div></div>
+    <div class="card"><h3>Top rota</h3><div>${(s.top_queries[0]?.query_type)||'-'}</div></div>
+  `;
+}
+
+async function loadKeys() {
+  const data = await api('/admin/keys');
+  document.getElementById('keysTable').innerHTML = data.items.map(item => `
+    <tr>
+      <td>${item.api_key}</td>
+      <td>${item.label || '-'}</td>
+      <td>${item.is_active ? 'Ativa' : 'Desativada'}</td>
+      <td>${item.created_at}</td>
+      <td>${item.last_used_at || '-'}</td>
+      <td>${item.is_active ? `<button class="danger" onclick="deactivateKey('${item.api_key}')">Desativar</button>` : '-'}</td>
+    </tr>
+  `).join('');
+}
+
+async function loadLogs() {
+  const data = await api('/admin/logs?limit=100');
+  renderLogs(data.items);
+}
+
+function renderLogs(items) {
+  document.getElementById('logsTable').innerHTML = items.map(item => `
+    <tr>
+      <td>${item.id}</td>
+      <td>${item.query_type}</td>
+      <td>${item.query_value}</td>
+      <td>${item.status_code}</td>
+      <td>${item.api_key || '-'}</td>
+      <td>${item.ip_address || '-'}</td>
+      <td>${item.created_at}</td>
+    </tr>
+  `).join('');
+}
+
+async function generateKey() {
+  const adminSecret = document.getElementById('adminSecret').value;
+  const label = document.getElementById('keyLabel').value;
+  try {
+    const data = await api(`/gen/apikey/admin/json?label=${encodeURIComponent(label)}`, { headers: { 'x-admin-secret': adminSecret } });
+    document.getElementById('genMsg').innerText = `Key criada: ${data.apikey}`;
+    refreshAll();
+  } catch (err) {
+    document.getElementById('genMsg').innerText = err.message;
+  }
+}
+
+async function deactivateKey(key) {
+  await api(`/admin/keys/${key}/deactivate`, { method:'POST' });
+  refreshAll();
+}
+
+function openStream() {
+  const evt = new EventSource('/admin/stream', { withCredentials: true });
+  evt.addEventListener('new_query_log', async () => loadLogs());
+}
+
+checkAuth();
+</script>
+</body>
+</html>

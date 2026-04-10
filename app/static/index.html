@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ConsultaDataAPI</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#0f172a; color:#e2e8f0; margin:0; }
+    .wrap { max-width:960px; margin:40px auto; padding:24px; }
+    .card { background:#111827; border:1px solid #1f2937; border-radius:16px; padding:24px; margin-bottom:20px; }
+    code, pre { background:#020617; color:#cbd5e1; padding:12px; border-radius:12px; display:block; overflow:auto; }
+    a { color:#60a5fa; }
+    .muted { color:#94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>ConsultaDataAPI</h1>
+      <p class="muted">API pronta com rota de CEP, geração de keys, logs e painel administrativo.</p>
+      <p><a href="/docs">Abrir documentação Swagger</a> · <a href="/admin">Abrir painel admin</a></p>
+    </div>
+    <div class="card">
+      <h2>Exemplo de consulta CEP</h2>
+      <pre>GET /api/consulta/cep/01001000
+Header: x-api-key: 1234</pre>
+    </div>
+  </div>
+</body>
+</html>

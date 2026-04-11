@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 
 import requests
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -25,6 +25,10 @@ from .db import (
     register_listener,
     save_query_log,
     unregister_listener,
+    list_query_json_files,
+    get_query_json_file,
+    overwrite_query_json_file,
+    export_full_database_snapshot,
 )
 from .genkey import router as key_router
 
@@ -76,6 +80,13 @@ app.add_middleware(
 RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "953247521fmshb9c525d84b6f59fp1c4b89jsnf768371fd7fd")
 DIRECTD_TOKEN = os.getenv("DIRECTD_TOKEN", "DCFE6E75-73DF-466A-91D8-0FB732BD8636")
 INVERTEXTO_TOKEN = os.getenv("INVERTEXTO_TOKEN", "25669|SEr08BkYg6P6LKb88QLAVfNMDQdFGHxI")
+
+
+
+def require_admin_secret(x_admin_secret: str | None = Header(default=None)) -> str:
+    if x_admin_secret != settings.admin_secret:
+        raise HTTPException(status_code=401, detail="Admin secret inválido.")
+    return x_admin_secret
 
 
 @app.on_event("startup")
@@ -198,6 +209,43 @@ def export_logs(_: str = Depends(get_admin_user)) -> FileResponse:
         encoding="utf-8"
     )
     return FileResponse(logs_path, filename="logs.json", media_type="application/json")
+
+
+@app.get("/admin/api/keys", tags=["Admin API"], summary="Listar keys via admin secret")
+def admin_api_keys(_: str = Depends(require_admin_secret)) -> dict:
+    return {"status": "success", "items": list_api_keys()}
+
+
+@app.get("/admin/api/logs", tags=["Admin API"], summary="Listar logs via admin secret")
+def admin_api_logs(limit: int = 100, _: str = Depends(require_admin_secret)) -> dict:
+    return {"status": "success", "items": list_query_logs(limit=limit)}
+
+
+@app.get("/admin/api/stats", tags=["Admin API"], summary="Estatísticas via admin secret")
+def admin_api_stats(_: str = Depends(require_admin_secret)) -> dict:
+    return {"status": "success", "stats": get_dashboard_stats()}
+
+
+@app.get("/admin/api/query-files", tags=["Admin API"], summary="Listar bancos JSON por tipo")
+def admin_api_query_files(_: str = Depends(require_admin_secret)) -> dict:
+    return {"status": "success", "items": list_query_json_files()}
+
+
+@app.get("/admin/api/query-files/{query_type}", tags=["Admin API"], summary="Ler banco JSON por tipo")
+def admin_api_query_file(query_type: str, _: str = Depends(require_admin_secret)) -> dict:
+    return {"status": "success", "data": get_query_json_file(query_type)}
+
+
+@app.put("/admin/api/query-files/{query_type}", tags=["Admin API"], summary="Editar banco JSON por tipo")
+async def admin_api_update_query_file(query_type: str, request: Request, _: str = Depends(require_admin_secret)) -> dict:
+    body = await request.json()
+    data = overwrite_query_json_file(query_type, body)
+    return {"status": "success", "data": data}
+
+
+@app.get("/admin/api/export/full", tags=["Admin API"], summary="Exportar snapshot completo")
+def admin_api_export_full(_: str = Depends(require_admin_secret)) -> dict:
+    return {"status": "success", "data": export_full_database_snapshot()}
 
 
 @app.get(
